@@ -1,0 +1,505 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/modules/boost.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <script src="https://code.highcharts.com/modules/offline-exporting.js"></script>
+  <script src="https://code.highcharts.com/modules/export-data.js"></script>
+
+
+  <title>ESP WaterBucket</title>
+  <style>
+    html{
+	  background-color: #cfd8dc;
+	  color: #000;
+	}
+    body {
+      min-width: 310px;
+    	max-width: 1600px;
+    	height: 400px;
+      margin: 0 auto;
+      font-family: Helvetica;
+	  padding:1em;
+    }
+    h2 {
+      font-size: 2.5em;
+      text-align: center;
+    }
+    button {
+	  padding:0.22em;
+      font-size: 0.8em;
+    }
+    input {
+	  max-width: 4em;
+      font-size: 0.9em;
+    }
+    .container {
+      text-align: center;
+      font-size: 1.25em;
+	  padding:1em;
+	  background-color: #dfe8ec; 
+    }
+  </style>
+</head>
+<body>
+  <h2>ESP WaterBucket</h2>
+   <div class="container"><b>Battery:</b> <span id="bbb">NaN</span><br>
+   <b>Output:</b> <i><span id="loadState">NaN</span></i><br>
+   <b>Temprature:</b> <span id="ttt">NaN</span> °C<br>
+   <b>Humidity:</b> <span id="hhh">NaN</span>%<br>
+   <b>Pressure:</b> <span id="ppp">NaN</span> hPa<br><br>
+   <button type="button" onclick="window.location.href='/simp'">Simple Mode</button> - <button type="button" onclick="getAll();">Update Now</button> - <button type="button" onclick="toggleLoad()">Toggle Load</button> <span id="ack2"></span></div><br>
+  <div id="chart-atmo" class="container"></div><br>
+  
+  <form>
+  <div title="These fields update when you refresh the page. Set to 0 minutes to disable." class="container"><b>Current Scheduling:</b><br>Enable output for <input type="number" id="minutes" name="minutes" value="0" min="0" max="120"> minutes every day at <input type="number" id="timetime" name="timetime" onchange="hoursZero()" "value="0" min="0" max="2359" title="0 to 2359"> hours UTC <button type="button" onclick="setAuto()">Set Schedule</button> <span id="ack"></span> <br><i>(The current time is <span id="curtime">NaN</span> hours UTC)</i> 	</div>
+  <br>
+</form>
+<button type="button" onclick="window.location.href='/dark'">Dark Mode</button>
+<button type="button" onclick="clearAll();">Clear All</button>
+<button type="button" id="historicBtn" onclick="getPast();">Get Historic Data</button><br>
+  Graph Timezone: <input type="number" id="tz" name="tz" value="-4" min="-12" max="12"> Refresh to apply...<br>
+  Data Interval (sec): <input type="number" id="intervalatmos" name="interval" value="120" min="1" max="600"> Refresh to apply...<br>
+  Graph Record Length: <input type="number" id="records" name="records" value="1440" min="10" max="8000"> No need to refresh...<br>
+  <i><span id="RSSI">NaN</span></i><br><br>
+  
+  <br><br>
+  
+<!--<img src="https://imgs.xkcd.com/comics/circuit_diagram.png ">-->
+</body>
+<script>
+
+var color1 = "#7cb5ec"; //rh 
+var color2 = "#ff6600"; //temp 
+var color3 = "#DA70D6"; //pressu 
+var color4 = "#2aae2a"; //volt
+
+var tz = document.getElementById("tz").value;
+Highcharts.setOptions({
+    global: {
+        timezoneOffset: tz * 60 * -1
+    }
+});
+Highcharts.theme = {
+
+  //"colors": ["#F92672", "#66D9EF", "#A6E22E", "#A6E22E"],
+  "chart": {
+    "backgroundColor": "#fefeff",
+    "style": {
+      "fontFamily": "monospace",
+     // "color": "#c8c9c5"
+    }
+  },
+  "title": {
+    "style": {
+      //"color": "#c8c9c5"
+    },
+    "align": "center"
+  },
+  "subtitle": {
+    "style": {
+      //"color": "#c8c9c5"
+    },
+    "align": "center"
+  },
+  "legend": {
+    "align": "right",
+    "verticalAlign": "bottom",
+    "itemStyle": {
+      "fontWeight": "normal",
+     // "color": "#c8c9c5"
+    },
+	"backgroundColor":"rgba(237,237,240,0.5)"
+  },
+  "xAxis": {
+    "gridLineDashStyle": "Dot",
+    "gridLineWidth": 1,
+    "gridLineColor": "#A0A09D",
+    "lineColor": "#A0A09D",
+    "minorGridLineColor": "#A0A09D",
+    "tickColor": "#A0A09D",
+    "tickWidth": 1
+  },
+  "yAxis": {
+    "gridLineDashStyle": "Dot",
+    "gridLineColor": "#A0A09D",
+    "lineColor": "#A0A09D",
+   "minorGridLineColor": "#A0A09D",
+    "tickColor": "#A0A09D",
+    "tickWidth": 0
+  }
+
+
+	
+};
+// Apply the theme
+Highcharts.setOptions(Highcharts.theme);
+	
+	
+var chartAtmo = new Highcharts.Chart({
+	chart: {
+		renderTo: 'chart-atmo',
+	},
+	title: {
+		text: 'Live Sensor Readings - ESP WaterBucket'
+	},
+	xAxis: {
+		type: 'datetime',
+		dateTimeLabelFormats: {
+			second: '%l:%M:%S%P'
+		}
+	},
+	yAxis: [{ // Primary yAxis
+		labels: {
+			format: '{value}°C',
+			style: {
+				color: color2
+			}
+		},
+		title: {
+			text: 'Temperature',
+			style: {
+				color: color2
+			}
+		},
+		opposite: false,
+		 minRange: 0.1,
+	}, { // Secondary yAxis
+		gridLineWidth: 0,
+		title: {
+			text: 'Humidity',
+			style: {
+				color: color1
+			}
+		},
+		labels: {
+			format: '{value}%',
+			style: {
+				color: color1
+			}
+		},
+		opposite: false,
+		 minRange: 0.1,
+	}, { // Tertiary yAxis
+		gridLineWidth: 0,
+		title: {
+			text: 'Voltage',
+			style: {
+				color: color4
+			}
+		},
+		labels: {
+			format: '{value} V',
+			style: {
+				color: color4
+			}
+		},
+		opposite: true,
+		 minRange: 0.1,
+	}, { // Tertiary yAxis
+		gridLineWidth: 0,
+		title: {
+			text: 'Pressure',
+			style: {
+				color: color3,
+			}
+		},
+		labels: {
+			format: '{value} hPa',
+			style: {
+				color: color3,
+			}
+		},
+		opposite: true,
+		 minRange: 0.1,
+	}],
+	tooltip: {
+		shared: true
+	},
+	legend: {
+		layout: 'horizontal',
+		align: 'left',
+		x: 170,
+		verticalAlign: 'top',
+		y: 30,
+		floating: true
+			
+	},
+	series: [{
+		name: 'Humidity',
+		type: 'spline',
+        lineWidth: 1,
+		yAxis: 1,
+		data: [],
+		marker: {
+			enabled: false
+		},
+		color: color1,
+		//dashStyle: 'shortdot',
+		tooltip: {
+			valueSuffix: ' %'
+		}
+	}, {
+		name: 'Pressure',
+		type: 'spline',
+        lineWidth: 1,
+		yAxis: 3,
+		data: [],
+		marker: {
+			enabled: false
+		},
+		color: color3,
+		//dashStyle: 'shortdot',
+		tooltip: {
+			valueSuffix: ' hPa'
+		}
+	}, {
+		name: 'Temperature',
+		type: 'spline',
+        lineWidth: 1,
+		data: [],
+		marker: {
+			enabled: false
+		},
+		color: color2,
+		//dashStyle: 'shortdot',
+		tooltip: {
+			valueSuffix: ' °C'
+		}
+	}, {
+		name: 'Voltage',
+		type: 'spline',
+		yAxis: 2,
+        lineWidth: 2,
+		data: [],
+		color: color4,
+		tooltip: {
+			valueSuffix: ' V'
+		}
+	}],
+	 exporting: {
+		sourceWidth: 1920,
+		sourceHeight: 540,
+		scale: 1 
+	},
+	credits: {
+		enabled: false
+	}
+});
+
+var Temp;
+var RH;
+var Pressure;
+var ADC;
+var Load;
+var AutoAt;
+var AutoFor;
+var Time;
+var RSSI;
+
+var pileUp = 0;
+function getAll() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = (document.getElementById("intervalatmos").value * 1000)-1000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState >= 2 ) {
+			pileUp = 0;
+		}
+		if (this.readyState == 4 && this.status == 200) {
+			var str = this.responseText;
+			var myarray = str.split(',');
+			Temp = myarray[0];
+			RH = myarray[1];
+			Pressure = myarray[2];
+			ADC = myarray[3];
+			Load = myarray[4];
+			AutoAt = myarray[5];
+			AutoFor = myarray[6];
+			Time = myarray[7];
+			RSSI = myarray[8];
+			var grafTime = Math.round(((new Date()).getTime() / 1000)) * 1000;
+		
+			//Temp
+			var x = grafTime,
+				y = parseFloat(Temp);
+			if (chartAtmo.series[2].data.length > document.getElementById("records").value) {
+				chartAtmo.series[2].addPoint([x, y], true, true, true);
+			} else {
+				chartAtmo.series[2].addPoint([x, y], true, false, true);
+			}
+			document.getElementById("ttt").innerHTML = y;
+			
+			//RH
+			var x = grafTime,
+				y = parseFloat(RH);
+			if (chartAtmo.series[0].data.length > document.getElementById("records").value) {
+				chartAtmo.series[0].addPoint([x, y], true, true, true);
+			} else {
+				chartAtmo.series[0].addPoint([x, y], true, false, true);
+			}
+			document.getElementById("hhh").innerHTML = y;
+			
+			//Pressure
+			var x = grafTime,
+				y = parseFloat(Pressure);
+			if (chartAtmo.series[1].data.length > document.getElementById("records").value) {
+				chartAtmo.series[1].addPoint([x, y], true, true, true);
+			} else {
+				chartAtmo.series[1].addPoint([x, y], true, false, true);
+			}
+			document.getElementById("ppp").innerHTML = y;
+			
+			//ADC
+			var x = grafTime,
+				y = parseFloat(ADC);
+			if (chartAtmo.series[3].data.length > document.getElementById("records").value) {
+				chartAtmo.series[3].addPoint([x, y], true, true, true);
+			} else {
+				chartAtmo.series[3].addPoint([x, y], true, false, true);
+			}
+			var ty = y;
+			var minVolt = 11.5;
+			//var maxvolt = 14.2;
+			var maxvolt = 13.4;
+			ty += " V (";
+			ty += Math.round((y - minVolt) * (100 - 0) / (maxvolt - minVolt) + 0);
+			ty += "%)";
+			document.getElementById("bbb").innerHTML = ty;
+			
+			//Load
+			document.getElementById("loadState").innerHTML = Load;
+			
+			//AutoAt
+			document.getElementById("timetime").value = AutoAt;
+			hoursZero();
+			
+			//AutoFor	
+			document.getElementById("minutes").value = AutoFor;
+			
+			//Time 
+			const zeroPad = (num, places) => String(num).padStart(places, '0');
+			document.getElementById("curtime").innerHTML = zeroPad(Time, 4);
+			
+			//RSSI
+			document.getElementById("RSSI").innerHTML = str;
+			
+		}
+	};
+	
+	if (pileUp < 10){
+		xhttp.open("GET", "/getall", true);
+		xhttp.send();
+		pileUp++;
+	}
+	else{
+		alert("Too many failed requests...");
+	}
+}
+setInterval(getAll, document.getElementById("intervalatmos").value * 1000);
+
+function toggleLoad() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			//getLoad();
+			document.getElementById("ack2").innerHTML = this.responseText;
+			setTimeout(function() {
+				document.getElementById("ack2").innerHTML = "";
+			}, 1000);
+		}
+	};
+	xhttp.open("GET", "/toggleload", true);
+	xhttp.send();
+}
+
+function setAuto() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			var xhttp2 = new XMLHttpRequest();
+			xhttp2.timeout = 10000;
+			xhttp2.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+					getAll();
+					document.getElementById("ack").innerHTML = this.responseText;
+					setTimeout(function() {
+						document.getElementById("ack").innerHTML = "";
+					}, 1000);
+				}
+			};
+			xhttp2.open("GET", "/auto?at=" + document.getElementById("timetime").value, true);
+			xhttp2.send();
+		}
+	};
+	xhttp.open("GET", "/auto?for=" + document.getElementById("minutes").value, true);
+	xhttp.send();
+}
+
+function hoursZero() {
+	const zeroPad = (num, places) => String(num).padStart(places, '0');
+	document.getElementById("timetime").value = zeroPad(document.getElementById("timetime").value, 4);
+}
+
+function getPast() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			var str = this.responseText;
+			var myarrayLines = str.split('\n');
+		
+			 //HISTORY_LENGTH (200), HISTORY_INTERVAL (10 seconds), 
+			 var secondsAgoArray = myarrayLines[0].split(',');
+			 
+			 var ADCAgoArray = myarrayLines[1].split(',');
+			 var TempAgoArray = myarrayLines[2].split(',');
+			 var RHAgoArray = myarrayLines[3].split(',');
+			 var PressureAgoArray = myarrayLines[4].split(',');
+			 
+			var grafTime = Math.round(((new Date()).getTime() / 1000)) * 1000; //millis
+			 
+			 if(ADCAgoArray.length == TempAgoArray.length && ADCAgoArray.length == RHAgoArray.length && ADCAgoArray.length == PressureAgoArray.length){
+			
+				for (let i = secondsAgoArray[0]-1; i >= 0; i--) {
+					var timeOffset = secondsAgoArray[1]*1000*(i+1);
+					var xh = grafTime-timeOffset;
+					var yh = 0;
+					if(parseFloat(TempAgoArray[i])>1.0){
+						yh = parseFloat(TempAgoArray[i]);
+						chartAtmo.series[2].addPoint([xh, yh], false, false, false);
+						
+						yh = parseFloat(RHAgoArray[i]);
+						chartAtmo.series[0].addPoint([xh, yh], false, false, false);
+						
+						yh = parseFloat(PressureAgoArray[i]);
+						chartAtmo.series[1].addPoint([xh, yh], false, false, false);
+						
+						yh = parseFloat(ADCAgoArray[i]);
+						chartAtmo.series[3].addPoint([xh, yh], false, false, false);
+					}
+				}
+				document.getElementById("historicBtn").style.visibility = "hidden";
+			}
+			getAll();
+		}
+	};
+	xhttp.open("GET", "/getpast", true);
+	xhttp.send();
+}
+
+getPast(); //to get the present, we bust first get the past...
+
+function clearAll(){
+	chartAtmo.series[2].setData([]);
+	chartAtmo.series[0].setData([]);
+	chartAtmo.series[1].setData([]);
+	chartAtmo.series[3].setData([]);
+}
+
+</script>
+</html>
+	

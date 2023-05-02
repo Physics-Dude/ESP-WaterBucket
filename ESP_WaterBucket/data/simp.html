@@ -1,0 +1,177 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <title>ESP WaterBucket (watered down)</title>
+  <style>
+    body {
+      min-width: 310px;
+    	max-width: 1600px;
+    	height: 400px;
+      margin: 0 auto;
+	  background-color: #cfd8dc;
+      font-family: Helvetica;
+	  padding:1em;
+    }
+    h2 {
+      font-size: 2.5em;
+      text-align: center;
+    }
+    button {
+	  padding:0.22em;
+      font-size: 0.8em;
+    }
+    input {
+      max-width: 4em;
+      font-size: 0.9em;
+    }
+    .container {
+      text-align: center;
+      font-size: 1.5em;
+	  padding:1em;
+	  background-color: #dfe8ec;
+    }
+	.boink{
+      font-size: 1.2em;
+	}
+  </style>
+</head>
+<body>
+  <h2>ESP WtrBckt</h2>
+   <div class="container"><b>Battery:</b> <span id="bbb">Loading...</span><br>
+   <b>Output:</b> <i><span id="loadState">Loading...</span></i><br><br>
+   <button type="button" class="boink" onclick="window.location.href='./'">Advanced Mode</button> - <button type="button" class="boink" onclick="toggleLoad()">Toggle Load</button> <span id="ack2"></span></div><br>
+  
+  <form>
+  <div title="These fields update when you refresh the page. Set to 0 minutes to disable." class="container"><b>Current Scheduling:</b><br>Enable output for <input type="number" id="minutes" name="minutes" value="0" min="0" max="120"> minutes every day at <input type="number" id="timetime" name="timetime" onchange="hoursZero()" "value="0" min="0" max="2359" title="0 to 2359"> hours UTC <button type="button" onclick="setAuto()">Set Schedule</button> <span id="ack"></span> <br><i>(The current time is <span id="curtime">waiting...</span> hours UTC)</i> 	</div>
+  <br>
+</form>
+  
+  <br><br>
+  
+
+</body>
+<script>
+function getV() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			var y = parseFloat(this.responseText);
+
+			//3.3 to 4.2
+			var ty = y;
+			var minVolt = 11.5;
+			var maxvolt = 14.2;
+			ty += " V (";
+			ty += Math.round((y - minVolt) * (100 - 0) / (maxvolt - minVolt) + 0);
+			ty += "%)";
+			document.getElementById("bbb").innerHTML = ty;
+		}
+	};
+	xhttp.open("GET", "/adc", true);
+	xhttp.send();
+}
+setInterval(getV, 8000);
+
+function getLoad() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			//getTime();
+			document.getElementById("loadState").innerHTML = this.responseText;
+		}
+	};
+	xhttp.open("GET", "/getload", true);
+	xhttp.send();
+}
+setInterval(getLoad, 4000);
+
+function toggleLoad() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			//getLoad();
+			document.getElementById("ack2").innerHTML = this.responseText;
+			setTimeout(function() {
+				document.getElementById("ack2").innerHTML = "";
+			}, 1000);
+		}
+	};
+	xhttp.open("GET", "/toggleload", true);
+	xhttp.send();
+}
+
+function getAuto() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			document.getElementById("minutes").value = this.responseText;
+			var xhttp2 = new XMLHttpRequest();
+			xhttp2.timeout = 10000;
+			xhttp2.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+					document.getElementById("timetime").value = this.responseText;
+					hoursZero();
+				}
+			};
+			xhttp2.open("GET", "/getautoat", true);
+			xhttp2.send();
+		}
+	};
+	xhttp.open("GET", "/getautofor", true);
+	xhttp.send();
+}
+
+function setAuto() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			var xhttp2 = new XMLHttpRequest();
+			xhttp2.timeout = 10000;
+			xhttp2.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+					getAuto();
+					document.getElementById("ack").innerHTML = this.responseText;
+					setTimeout(function() {
+						document.getElementById("ack").innerHTML = "";
+					}, 1000);
+				}
+			};
+			xhttp2.open("GET", "/auto?at=" + document.getElementById("timetime").value, true);
+			xhttp2.send();
+		}
+	};
+	xhttp.open("GET", "/auto?for=" + document.getElementById("minutes").value, true);
+	xhttp.send();
+}
+
+function getTime() {
+	var xhttp = new XMLHttpRequest();
+	xhttp.timeout = 10000;
+	xhttp.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			const zeroPad = (num, places) => String(num).padStart(places, '0');
+			document.getElementById("curtime").innerHTML = zeroPad(this.responseText, 4);
+		}
+	};
+	xhttp.open("GET", "/gettime", true);
+	xhttp.send();
+}
+setInterval(getTime, 16 * 1000);
+
+function hoursZero() {
+	const zeroPad = (num, places) => String(num).padStart(places, '0');
+	document.getElementById("timetime").value = zeroPad(document.getElementById("timetime").value, 4);
+}
+
+getAuto();
+</script>
+</html>
+	
